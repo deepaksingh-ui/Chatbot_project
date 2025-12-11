@@ -1,0 +1,147 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>AI Chatbot - Voice & Text (Demo)</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #messages { border: 1px solid #ddd; padding: 10px; height: 320px; overflow:auto; }
+    .msg { margin:8px 0; }
+    .user { font-weight:600; color:#0b5cff; }
+    .bot { color: #007700; font-weight:600; }
+    .meta { color:#777; font-size:12px; margin-left:6px; }
+    .controls { margin-top:10px; }
+    #text { padding:6px; }
+  </style>
+</head>
+<body>
+  <h1>AI Chatbot (Voice + Text)</h1>
+  <div id="messages"></div>
+
+  <div class="controls">
+    <input id="text" placeholder="Type a message" style="width:60%" />
+    <button id="send">Send</button>
+    <button id="voice">🎤 Speak</button>
+    <label><input type="checkbox" id="tts" checked> Bot speaks replies</label>
+  </div>
+
+  <script>
+    // Use fixed, explicit websocket URL (ensure Daphne is running on port 8000)
+    const WS_URL = "ws://127.0.0.1:8000/ws/chat/global_room/";
+    let socket = null;
+
+    const messages = document.getElementById('messages');
+    const input = document.getElementById('text');
+    const sendBtn = document.getElementById('send');
+
+    function addMessage(cls, who, text) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + cls;
+      div.innerHTML = `<strong>${who}:</strong> ${text}`;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function ensureSocket() {
+      if (socket && socket.readyState === WebSocket.OPEN) return;
+      socket = new WebSocket(WS_URL);
+
+      socket.onopen = () => {
+        addMessage('bot', 'bot', 'Connected to chat server.');
+      };
+
+      socket.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          // backend sends {"message": "..."} (our consumers.py uses that)
+          const text = data.message ?? JSON.stringify(data);
+          addMessage('bot', 'bot', text);
+
+          // TTS if enabled
+          if (document.getElementById('tts').checked && 'speechSynthesis' in window) {
+            try {
+              const utter = new SpeechSynthesisUtterance(text);
+              speechSynthesis.speak(utter);
+            } catch (e) {
+              console.error('TTS error:', e);
+            }
+          }
+        } catch (e) {
+          console.error('Invalid message from server', e, evt.data);
+        }
+      };
+
+      socket.onclose = () => {
+        addMessage('bot', 'bot', 'Disconnected from server. Reconnecting...');
+        // try reconnect after a short delay
+        setTimeout(ensureSocket, 1500);
+      };
+
+      socket.onerror = (err) => {
+        console.error('WebSocket error', err);
+      };
+    }
+
+    sendBtn.onclick = () => {
+      const text = input.value.trim();
+      if (!text) return;
+      addMessage('user', 'you', text);
+      ensureSocket();
+
+      // IMPORTANT: backend expects {"message": "..."}
+      const payload = { message: text };
+
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(payload));
+      } else {
+        // fallback: if not open yet, wait briefly then attempt to send
+        addMessage('bot', 'bot', 'Waiting for connection to send your message...');
+        const trySend = () => {
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(payload));
+          } else {
+            // keep trying a couple times (simple approach)
+            setTimeout(trySend, 500);
+          }
+        };
+        setTimeout(trySend, 500);
+      }
+      input.value = '';
+    };
+
+    // Voice input using Web Speech API (client-side)
+    const voiceBtn = document.getElementById('voice');
+    let recognition;
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        addMessage('user', 'you (voice)', transcript);
+        ensureSocket();
+        const payload = { message: transcript };
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(payload));
+        } else {
+          addMessage('bot', 'bot', 'Waiting for connection to send your voice message...');
+        }
+      };
+
+      recognition.onerror = (e) => console.error('Speech recognition error', e);
+      voiceBtn.onclick = () => {
+        try { recognition.start(); } catch(e){ console.error(e); }
+      };
+    } else {
+      voiceBtn.disabled = true;
+      voiceBtn.title = 'Speech Recognition not supported in your browser';
+    }
+
+    // Auto-connect on page load
+    ensureSocket();
+  </script>
+</body>
+</html>
