@@ -1,0 +1,41 @@
+{
+  "info": {
+    "name": "Chatbot API Final (Fixed)",
+    "_postman_id": "chatbot-final-001",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "List Conversations",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/conversations/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "conversations"
+          ]
+        }
+      }
+    },
+    {
+      "name": "List Messages",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/messages/",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "messages"
+          ]
+        }
+      }
+    }
+  ]
+}
